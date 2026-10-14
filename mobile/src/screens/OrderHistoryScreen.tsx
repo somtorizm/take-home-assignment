@@ -10,38 +10,32 @@ import {
 import { Order } from '../types';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import { formatMoney, normalizeOrder } from '../utils/money';
 
 export const OrderHistoryScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const { isAuthenticated } = useAuth();
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        const response = await api.get('/orders');
+        setOrders(response.data.map(normalizeOrder));
+        setError(null);
+      } catch (e) {
+        console.error('Error fetching orders:', e);
+        setError("Couldn't load your orders. Please try again later.");
+      } finally {
+        setLoading(false);
+      }
+    };
     if (isAuthenticated) {
       fetchOrders();
     }
   }, [isAuthenticated]);
-
-  const fetchOrders = async () => {
-    try {
-      const response = await api.get('/orders');
-      // Convert price strings to numbers in order items
-      const ordersWithNumericPrices = response.data.map((order: any) => ({
-        ...order,
-        total_amount: typeof order.total_amount === 'string' ? parseFloat(order.total_amount) : order.total_amount,
-        items: order.items.map((item: any) => ({
-          ...item,
-          price: typeof item.price === 'string' ? parseFloat(item.price) : item.price,
-          subtotal: typeof item.subtotal === 'string' ? parseFloat(item.subtotal) : item.subtotal,
-        })),
-      }));
-      setOrders(ordersWithNumericPrices);
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (!isAuthenticated) {
     return (
@@ -85,15 +79,30 @@ export const OrderHistoryScreen: React.FC<{ navigation: any }> = ({ navigation }
           </View>
         ))}
       </View>
+      {item.discount_amount > 0 ? (
+        <View style={styles.breakdown}>
+          <View style={styles.breakdownRow}>
+            <Text style={styles.breakdownLabel}>Subtotal</Text>
+            <Text style={styles.breakdownValue}>{formatMoney(item.subtotal_amount)}</Text>
+          </View>
+          <View style={styles.breakdownRow}>
+            <Text style={styles.discountLabel}>
+              Discount{item.promo_code ? ` (${item.promo_code.code})` : ''}
+            </Text>
+            <Text style={styles.discountLabel}>-{formatMoney(item.discount_amount)}</Text>
+          </View>
+        </View>
+      ) : null}
       <View style={styles.totalContainer}>
-        <Text style={styles.totalLabel}>Total:</Text>
-        <Text style={styles.totalAmount}>${item.total_amount.toFixed(2)}</Text>
+        <Text style={styles.totalLabel}>{item.discount_amount > 0 ? 'Paid:' : 'Total:'}</Text>
+        <Text style={styles.totalAmount}>{formatMoney(item.total_amount)}</Text>
       </View>
     </View>
   );
 
   return (
     <View style={styles.container}>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
       {orders.length === 0 ? (
         <View style={styles.center}>
           <Text style={styles.emptyText}>No orders yet</Text>
@@ -197,6 +206,18 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 12,
   },
+  breakdown: {
+    marginTop: 4,
+  },
+  breakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  breakdownLabel: { fontSize: 14, color: '#666' },
+  breakdownValue: { fontSize: 14, color: '#333' },
+  discountLabel: { fontSize: 14, color: '#1E7B3A', fontWeight: '600' },
+  errorText: { color: '#FF3B30', textAlign: 'center', padding: 12 },
   itemsContainer: {
     marginBottom: 12,
   },

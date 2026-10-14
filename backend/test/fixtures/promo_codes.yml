@@ -1,0 +1,30 @@
+welcome10:
+  code: WELCOME10
+  discount_type: percent
+  value: 10
+  active: true
+
+save5:
+  code: SAVE5
+  discount_type: fixed
+  value: 5
+  active: true
+
+bigsaver:
+  code: BIGSAVER
+  discount_type: fixed
+  value: 500
+  active: true
+
+expired:
+  code: EXPIRED
+  discount_type: percent
+  value: 20
+  active: true
+  expires_at: <%= 1.day.ago.to_fs(:db) %>
+
+disabled:
+  code: DISABLED
+  discount_type: fixed
+  value: 10
+  active: false

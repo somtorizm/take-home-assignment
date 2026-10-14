@@ -1,10 +1,13 @@
-# Clear existing data
+# Clear existing data (children before parents to satisfy foreign keys)
+OrderItem.destroy_all
+Order.destroy_all
+CartItem.destroy_all
+Cart.destroy_all
 User.destroy_all
 Product.destroy_all
 Cart.destroy_all
 CartItem.destroy_all
-Order.destroy_all
-OrderItem.destroy_all
+PromoCode.destroy_all
 
 # Create test users
 puts "Creating test users..."
@@ -151,7 +154,8 @@ puts "Added items to #{user1.email}'s cart"
 puts "Creating sample order..."
 order1 = Order.create!(
   user: user1,
-  total_amount: 89.97,
+  subtotal_amount: 98.98,
+  total_amount: 98.98,
   status: 'completed'
 )
 
@@ -170,6 +174,20 @@ OrderItem.create!(
 )
 
 puts "Created sample order for #{user1.email}"
+
+# Promo codes to try. Marketing has no admin UI yet; these can also be managed
+# from `rails console` (e.g. PromoCode.find_by_code('save5').update!(active: false)).
+puts "Creating promo codes..."
+[
+  { code: 'WELCOME10', discount_type: 'percent', value: 10 },
+  { code: 'SAVE5', discount_type: 'fixed', value: 5 },
+  { code: 'HALFOFF', discount_type: 'percent', value: 50, expires_at: 30.days.from_now },
+  { code: 'BIGSAVER', discount_type: 'fixed', value: 500 }, # larger than any cart: shows the cap at subtotal
+  { code: 'EXPIRED', discount_type: 'percent', value: 20, expires_at: 1.day.ago },
+  { code: 'DISABLED', discount_type: 'fixed', value: 10, active: false },
+  { code: 'COMINGSOON', discount_type: 'percent', value: 15, starts_at: 7.days.from_now }
+].each { |attrs| PromoCode.create!(attrs) }
+puts "Created promo codes: #{PromoCode.pluck(:code).join(', ')}"
 
 puts "\nSeeding complete!"
 puts "Test users:"

@@ -1,3 +1,5 @@
+export type DiscountType = 'percent' | 'fixed';
+
 export interface User {
   id: number;
   email: string;
@@ -22,6 +24,10 @@ export interface CartItem {
 export interface Cart {
   id: number;
   items: CartItem[];
+  subtotal: number;
+  discount: number;
+  promo_code: AppliedPromoCode | null;
+  promo_notice: string | null;
   total: number;
 }
 
@@ -34,14 +40,30 @@ export interface OrderItem {
 
 export interface Order {
   id: number;
+  subtotal_amount: number;
+  discount_amount: number;
+  promo_code: OrderPromoCode | null;
   total_amount: number;
   status: string;
   created_at: string;
   items: OrderItem[];
 }
 
+export interface OrderPromoCode {
+  code: string;
+  discount_type: DiscountType;
+  value: number;
+}
+
 export interface AuthResponse {
   token: string;
   user: User;
+}
+
+export interface AppliedPromoCode {
+  code: string;
+  discount_type: DiscountType;
+  value: number;
+  description: string;
 }
 

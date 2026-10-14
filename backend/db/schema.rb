@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2025_11_20_154613) do
+ActiveRecord::Schema[7.0].define(version: 2026_10_13_100002) do
   create_table "cart_items", force: :cascade do |t|
     t.integer "cart_id", null: false
     t.integer "product_id", null: false
@@ -26,6 +26,8 @@ ActiveRecord::Schema[7.0].define(version: 2025_11_20_154613) do
     t.integer "user_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "promo_code_id"
+    t.index ["promo_code_id"], name: "index_carts_on_promo_code_id"
     t.index ["user_id"], name: "index_carts_on_user_id"
   end
 
@@ -46,6 +48,13 @@ ActiveRecord::Schema[7.0].define(version: 2025_11_20_154613) do
     t.string "status", default: "pending"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.decimal "subtotal_amount", precision: 10, scale: 2
+    t.decimal "discount_amount", precision: 10, scale: 2, default: "0.0", null: false
+    t.integer "promo_code_id"
+    t.string "promo_code_snapshot"
+    t.string "promo_discount_type"
+    t.decimal "promo_value", precision: 10, scale: 2
+    t.index ["promo_code_id"], name: "index_orders_on_promo_code_id"
     t.index ["user_id"], name: "index_orders_on_user_id"
   end
 
@@ -59,6 +68,18 @@ ActiveRecord::Schema[7.0].define(version: 2025_11_20_154613) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "promo_codes", force: :cascade do |t|
+    t.string "code", null: false
+    t.string "discount_type", null: false
+    t.decimal "value", precision: 10, scale: 2, null: false
+    t.datetime "starts_at"
+    t.datetime "expires_at"
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["code"], name: "index_promo_codes_on_code", unique: true
+  end
+
   create_table "users", force: :cascade do |t|
     t.string "email", null: false
     t.string "password_digest", null: false
@@ -69,8 +90,10 @@ ActiveRecord::Schema[7.0].define(version: 2025_11_20_154613) do
 
   add_foreign_key "cart_items", "carts"
   add_foreign_key "cart_items", "products"
+  add_foreign_key "carts", "promo_codes"
   add_foreign_key "carts", "users"
   add_foreign_key "order_items", "orders"
   add_foreign_key "order_items", "products"
+  add_foreign_key "orders", "promo_codes"
   add_foreign_key "orders", "users"
 end

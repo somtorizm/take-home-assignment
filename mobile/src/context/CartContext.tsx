@@ -1,7 +1,15 @@
-import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
-import { Cart, CartItem } from '../types';
+import React, {
+  createContext,
+  useState,
+  useContext,
+  ReactNode,
+  useEffect,
+  useCallback,
+} from 'react';
+import { Cart } from '../types';
 import api from '../services/api';
 import { useAuth } from './AuthContext';
+import { getApiErrorMessage, normalizeCart } from '../utils/money';
 
 interface CartContextType {
   cart: Cart | null;
@@ -10,6 +18,10 @@ interface CartContextType {
   addToCart: (productId: number, quantity?: number) => Promise<void>;
   updateCartItem: (itemId: number, quantity: number) => Promise<void>;
   removeFromCart: (itemId: number) => Promise<void>;
+  /** Resolves on success; rejects with an Error whose message is shopper-friendly. */
+  applyPromoCode: (code: string) => Promise<void>;
+  removePromoCode: () => Promise<void>;
+  clearPromoNotice: () => void;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -19,37 +31,28 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(false);
   const { isAuthenticated } = useAuth();
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      refreshCart();
+  const refreshCart = useCallback(async () => {
+    if (!isAuthenticated) {
+      return;
     }
-  }, [isAuthenticated]);
-
-  const refreshCart = async () => {
-    if (!isAuthenticated) return;
     try {
       setIsLoading(true);
       const response = await api.get('/cart');
-      // Convert price strings to numbers in cart items
-      const cartData = response.data;
-      if (cartData && cartData.items) {
-        cartData.items = cartData.items.map((item: any) => ({
-          ...item,
-          product: {
-            ...item.product,
-            price: typeof item.product?.price === 'string' ? parseFloat(item.product.price) : item.product?.price,
-          },
-          subtotal: typeof item.subtotal === 'string' ? parseFloat(item.subtotal) : item.subtotal,
-        }));
-        cartData.total = typeof cartData.total === 'string' ? parseFloat(cartData.total) : cartData.total;
-      }
-      setCart(cartData);
+      setCart(normalizeCart(response.data));
     } catch (error) {
       console.error('Error fetching cart:', error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      refreshCart();
+    } else {
+      setCart(null);
+    }
+  }, [isAuthenticated, refreshCart]);
 
   const addToCart = async (productId: number, quantity: number = 1) => {
     try {
@@ -61,19 +64,30 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // Previously this was an optimistic, fire-and-forget update: line subtotals
+  // and the cart total were never recalculated and server errors (e.g. stock)
+  // were swallowed, so the screen could show a quantity the server rejected.
+  // Now: optimistic quantity, then re-sync from the server (which also
+  // recalculates any promo discount), rolling back on failure.
   const updateCartItem = async (itemId: number, quantity: number) => {
-    // Optimistic update for a snappier cart
+    const previous = cart;
     if (cart) {
       setCart({
         ...cart,
         items: cart.items.map(item =>
-          item.id === itemId ? { ...item, quantity } : item
+          item.id === itemId ? { ...item, quantity } : item,
         ),
       });
     }
-    api.patch(`/cart/items/${itemId}`, { quantity }).catch(error => {
+    try {
+      await api.patch(`/cart/items/${itemId}`, { quantity });
+      const response = await api.get('/cart');
+      setCart(normalizeCart(response.data));
+    } catch (error) {
       console.error('Error updating cart item:', error);
-    });
+      setCart(previous);
+      throw new Error(getApiErrorMessage(error, 'Could not update quantity.'));
+    }
   };
 
   const removeFromCart = async (itemId: number) => {
@@ -86,6 +100,34 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const applyPromoCode = async (code: string) => {
+    const trimmed = code.trim();
+    if (!trimmed) {
+      throw new Error('Please enter a promo code.');
+    }
+    try {
+      const response = await api.post('/cart/promo_code', { code: trimmed });
+      setCart(normalizeCart(response.data));
+    } catch (error) {
+      throw new Error(
+        getApiErrorMessage(error, "That code couldn't be applied. Please try again."),
+      );
+    }
+  };
+
+  const removePromoCode = async () => {
+    try {
+      const response = await api.delete('/cart/promo_code');
+      setCart(normalizeCart(response.data));
+    } catch (error) {
+      throw new Error(getApiErrorMessage(error, "Couldn't remove the code. Please try again."));
+    }
+  };
+
+  const clearPromoNotice = useCallback(() => {
+    setCart(current => (current ? { ...current, promo_notice: null } : current));
+  }, []);
+
   return (
     <CartContext.Provider
       value={{
@@ -95,6 +137,9 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         addToCart,
         updateCartItem,
         removeFromCart,
+        applyPromoCode,
+        removePromoCode,
+        clearPromoNotice,
       }}
     >
       {children}
@@ -104,9 +149,8 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
 export const useCart = () => {
   const context = useContext(CartContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useCart must be used within a CartProvider');
   }
   return context;
 };
-

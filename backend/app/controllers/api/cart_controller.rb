@@ -1,25 +1,8 @@
 class Api::CartController < ApplicationController
   def show
     cart = current_user.cart
-    render json: {
-      id: cart.id,
-      items: cart.cart_items.map do |item|
-        {
-          id: item.id,
-          product: {
-            id: item.product.id,
-            name: item.product.name,
-            description: item.product.description,
-            price: item.product.price,
-            image_url: item.product.image_url,
-            stock_quantity: item.product.stock_quantity
-          },
-          quantity: item.quantity,
-          subtotal: item.subtotal
-        }
-      end,
-      total: cart.total
-    }, status: :ok
+    notice = cart.drop_stale_promo_code!
+    render json: serialize_cart(cart, promo_notice: notice), status: :ok
   end
 
   def add_item
@@ -57,5 +40,55 @@ class Api::CartController < ApplicationController
   rescue ActiveRecord::RecordNotFound
     render json: { error: 'Cart item not found' }, status: :not_found
   end
-end
 
+  # POST /api/cart/promo_code  { code: "WELCOME10" }
+  # Applying a new code replaces any existing one (one code per order).
+  def apply_promo_code
+    cart = current_user.cart
+    if cart.cart_items.empty?
+      render json: { error: 'Add something to your cart before applying a promo code.', reason: 'empty_cart' },
+             status: :unprocessable_entity
+      return
+    end
+    cart.apply_promo_code!(params[:code])
+    render json: serialize_cart(cart.reload), status: :ok
+  rescue PromoCode::Invalid => e
+    render json: { error: e.message, reason: e.reason }, status: :unprocessable_entity
+  end
+
+  # DELETE /api/cart/promo_code
+  def remove_promo_code
+    cart = current_user.cart
+    cart.remove_promo_code!
+    render json: serialize_cart(cart.reload), status: :ok
+  end
+
+  private
+
+  def serialize_cart(cart, promo_notice: nil)
+    items = cart.cart_items.includes(:product)
+    {
+      id: cart.id,
+      items: items.map do |item|
+        {
+          id: item.id,
+          product: {
+            id: item.product.id,
+            name: item.product.name,
+            description: item.product.description,
+            price: item.product.price,
+            image_url: item.product.image_url,
+            stock_quantity: item.product.stock_quantity
+          },
+          quantity: item.quantity,
+          subtotal: item.subtotal
+        }
+      end,
+      subtotal: cart.subtotal,
+      discount: cart.discount,
+      total: cart.total,
+      promo_code: cart.promo_code&.as_summary_json,
+      promo_notice: promo_notice
+    }
+  end
+end

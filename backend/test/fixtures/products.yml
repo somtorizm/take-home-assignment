@@ -5,11 +5,11 @@ one:
   description: MyText
   price: 9.99
   image_url: MyString
-  stock_quantity: 1
+  stock_quantity: 10
 
 two:
   name: MyString
   description: MyText
   price: 9.99
   image_url: MyString
-  stock_quantity: 1
+  stock_quantity: 10
